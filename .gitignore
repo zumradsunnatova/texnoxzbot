@@ -1,0 +1,16 @@
+# Muhit o'zgaruvchilari (token saqlanadi)
+.env
+
+# Vaqtinchalik yuklab olingan fayllar
+downloads/
+
+# Python cache
+__pycache__/
+*.py[cod]
+*$py.class
+
+# Maxfiy cookies
+cookies.txt
+
+# Loglar
+*.log
