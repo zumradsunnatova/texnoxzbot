@@ -17,6 +17,7 @@ from aiogram.utils.media_group import MediaGroupBuilder
 
 from downloader import extract_instagram_url, InstagramDownloader
 from video_converter import convert_to_video_note
+from ai_assistant import ask_ai, reset_chat
 from config import MAX_FILE_SIZE_BYTES, DOWNLOADS_DIR
 
 logger = logging.getLogger(__name__)
@@ -65,11 +66,14 @@ async def cmd_start(message: Message, bot: Bot):
     """
     welcome_text = (
         f"👋 <b>Assalomu alaykum, {html.escape(message.from_user.full_name)}!</b>\n\n"
-        f"Men ko'p funksiyali video botman! 🚀\n\n"
+        f"Men <b>texnoxbot</b> – ko'p funksiyali aqlli yordamchingizman! 🚀\n\n"
         f"<b>Mening imkoniyatlarim:</b>\n"
-        f"1️⃣ <b>Instagram yuklovchi:</b> Menga Instagram Reels yoki video havolasini yuboring — tayyor qilib yuklab beraman.\n"
-        f"2️⃣ <b>Dumaloq video (Video Note / Kruglyash):</b> Menga istalgan oddiy video yuboring — uni Telegram dumaloq video xabari formatiga o'tkazib beraman! ⭕\n\n"
-        f"💡 <i>Sinab ko'rish uchun hoziroq havola yoki video yuboring!</i>"
+        f"🤖 <b>AI Suhbatdosh:</b> Menga istalgan mavzuda savol bering yoki shunchaki suhbatlashing.\n"
+        f"📥 <b>Instagram yuklovchi:</b> Instagram Reels yoki video havolasini yuborsangiz, yuklab beraman.\n"
+        f"⭕ <b>Dumaloq video (Kruglyash):</b> Istalgan oddiy video yuborsangiz, uni Telegram video xabariga aylantirib beraman!\n\n"
+        f"🧹 /clear — AI suhbat xotirasini tozalash\n"
+        f"📖 /help — Foydalanish bo'yicha qo'llanma\n\n"
+        f"💡 <i>Menga biror narsa yozing, video yoki havola yuboring!</i>"
     )
     await message.answer(welcome_text, parse_mode="HTML")
 
@@ -81,18 +85,26 @@ async def cmd_help(message: Message):
     """
     help_text = (
         "📖 <b>Botdan foydalanish bo'yicha qo'llanma:</b>\n\n"
-        "📥 <b>1. Instagram'dan video yuklash:</b>\n"
-        "• Instagram'da videoning havolasidan nusxa oling (Copy link).\n"
-        "• Havolani botga yuboring.\n"
-        "• Bot videoni yuklab beradi.\n\n"
-        "⭕ <b>2. Dumaloq video (kruglyash) yasash:</b>\n"
-        "• O'zingizdagi istalgan to'rtburchak/oddiy videoni botga yuboring.\n"
-        "• Bot uni avtomatik tarzda markazidan 1:1 kvadrat qilib qirqadi va Telegram dumaloq video xabariga aylantirib beradi.\n\n"
-        "⚠️ <b>Eslatmalar:</b>\n"
-        "• Dumaloq videolar davomiyligi Telegram talabi bo'yicha maksimal 60 soniya bo'ladi.\n"
-        "• Botga yuboriladigan videoning hajmi 20 MB dan oshmasligi lozim."
+        "🤖 <b>1. AI bilan suhbatlashish:</b>\n"
+        "• Shunchaki matn yozing (masalan: <i>'Salom, bugungi rejamni tuzishga yordam ber'</i>).\n"
+        "• AI siz bilan o'zbek tilida tabiiy suhbat quradi va oldingi xabarlaringizni eslab qoladi.\n"
+        "• Yangi mavzudan boshlash uchun /clear buyrug'ini yuboring.\n\n"
+        "📥 <b>2. Instagram'dan video yuklash:</b>\n"
+        "• Instagram ilovasida videoni havolasidan nusxa oling (Copy link).\n"
+        "• Havolani botga yuboring va video bir necha soniyada tayyor bo'ladi.\n\n"
+        "⭕ <b>3. Dumaloq video (kruglyash) yasash:</b>\n"
+        "• O'zingizdagi to'rtburchak videoni botga yuboring.\n"
+        "• Bot uni avtomatik 1:1 kvadrat qilib, video xabari ko'rinishida taqdim etadi."
     )
     await message.answer(help_text, parse_mode="HTML")
+
+
+@router.message(Command("clear"))
+@router.message(Command("reset"))
+async def cmd_clear(message: Message):
+    """AI suhbat tarixini tozalash."""
+    reset_chat(message.from_user.id)
+    await message.reply("🧹 <b>Suhbat tarixi tozalandi!</b> Yangi mavzuda suhbatlashishimiz mumkin 😊", parse_mode="HTML")
 
 
 async def process_video_to_note(message: Message, bot: Bot, file_id: str, file_size: int, duration: int = None):
@@ -116,7 +128,6 @@ async def process_video_to_note(message: Message, bot: Bot, file_id: str, file_s
 
     try:
         async with ChatActionSender.record_video_note(bot=bot, chat_id=message.chat.id):
-            # Telegramdan videoni yuklab olish (timeout 300 soniya qilib belgilandi)
             file_info = await bot.get_file(file_id)
             await bot.download_file(
                 file_path=file_info.file_path,
@@ -124,8 +135,6 @@ async def process_video_to_note(message: Message, bot: Bot, file_id: str, file_s
                 timeout=300,
                 chunk_size=1024 * 512
             )
-
-            # FFmpeg yordamida dumaloq formatga o'tkazish
             success = await asyncio.to_thread(convert_to_video_note, input_path, output_path, 60)
 
         if not success:
@@ -134,7 +143,6 @@ async def process_video_to_note(message: Message, bot: Bot, file_id: str, file_s
 
         out_duration = min(duration, 60) if duration else None
 
-        # Dumaloq video (Video Note) ko'rinishida yuborish
         await bot.send_video_note(
             chat_id=message.chat.id,
             video_note=FSInputFile(output_path),
@@ -191,7 +199,6 @@ async def handle_document(message: Message, bot: Bot):
     mime = (doc.mime_type or "").lower()
     fname = (doc.file_name or "").lower()
 
-    # Fayl video ekanligini tekshirish
     is_video = mime.startswith("video/") or fname.endswith(('.mp4', '.mov', '.mkv', '.avi', '.webm'))
     if is_video:
         await process_video_to_note(
@@ -201,140 +208,139 @@ async def handle_document(message: Message, bot: Bot):
             file_size=doc.file_size
         )
     else:
-        # Agar oddiy fayl (masalan pdf yoki rasm) bo'lsa
         await message.reply(
-            "⚠️ <b>Iltimos, video fayl yoki Instagram havolasini yuboring!</b>",
+            "⚠️ <b>Iltimos, video fayl, Instagram havolasini yoki AI bilan suhbatlashish uchun biror savol yuboring!</b>",
             parse_mode="HTML"
         )
 
 
 @router.message(F.text)
-async def handle_instagram_link(message: Message, bot: Bot):
+async def handle_text_message(message: Message, bot: Bot):
     """
-    Foydalanuvchi yuborgan xabarni tekshiradi va Instagram havolasi bo'lsa videoni yuklaydi.
+    Foydalanuvchi matn yuborganida:
+    - Agar Instagram havolasi bo'lsa -> videoni yuklab beradi.
+    - Agar oddiy matn bo'lsa -> AI suhbatdosh (Gemini) javob beradi.
     """
     url = extract_instagram_url(message.text)
 
-    # Agar xabarda Instagram havolasi bo'lmasa
-    if not url:
-        await message.reply(
-            "⚠️ <b>Iltimos, to'g'ri Instagram havolasini yoki dumaloq formatga o'tkazish uchun video yuboring!</b>\n\n"
-            "Masalan:\n<code>https://www.instagram.com/reel/...</code>",
-            parse_mode="HTML"
-        )
-        return
+    # 1. Instagram havolasi bo'lsa
+    if url:
+        status_msg = await message.reply("⏳ <b>Video yuklanmoqda, iltimos kuting...</b>", parse_mode="HTML")
+        task_dir = None
+        try:
+            async with ChatActionSender.upload_video(bot=bot, chat_id=message.chat.id):
+                result = await asyncio.to_thread(downloader.download, url)
 
-    # Jarayon boshlanganini bildiruvchi xabar
-    status_msg = await message.reply("⏳ <b>Video yuklanmoqda, iltimos kuting...</b>", parse_mode="HTML")
-
-    task_dir = None
-    try:
-        # Telegramda 'video yuklanmoqda' indikatorini ko'rsatish
-        async with ChatActionSender.upload_video(bot=bot, chat_id=message.chat.id):
-            result = await asyncio.to_thread(downloader.download, url)
-
-        # Agar yuklab olishda xatolik yuz bergan bo'lsa
-        if not result["success"]:
-            await status_msg.edit_text(result["message"], parse_mode="HTML")
-            return
-
-        task_dir = result.get("task_dir")
-        files = result.get("files", [])
-        bot_info = await bot.get_me()
-        caption = build_caption(
-            title=result.get("title", ""),
-            uploader=result.get("uploader", ""),
-            bot_username=bot_info.username or ""
-        )
-        reply_markup = get_post_keyboard(result.get("webpage_url", url))
-
-        # Agar bitta fayl bo'lsa
-        if len(files) == 1:
-            file_path = files[0]
-            file_size = os.path.getsize(file_path)
-
-            if file_size > MAX_FILE_SIZE_BYTES:
-                size_mb = file_size / (1024 * 1024)
-                await status_msg.edit_text(
-                    f"⚠️ <b>Kechirasiz, video hajmi juda katta ({size_mb:.1f} MB)!</b>\n\n"
-                    f"Telegram botlari orqali faqat 50 MB gacha bo'lgan fayllarni yuborish mumkin.",
-                    parse_mode="HTML"
-                )
+            if not result["success"]:
+                await status_msg.edit_text(result["message"], parse_mode="HTML")
                 return
 
-            ext = os.path.splitext(file_path)[1].lower()
-            input_file = FSInputFile(file_path)
+            task_dir = result.get("task_dir")
+            files = result.get("files", [])
+            bot_info = await bot.get_me()
+            caption = build_caption(
+                title=result.get("title", ""),
+                uploader=result.get("uploader", ""),
+                bot_username=bot_info.username or ""
+            )
+            reply_markup = get_post_keyboard(result.get("webpage_url", url))
 
-            if ext in ['.mp4', '.mov', '.mkv', '.webm']:
-                await bot.send_video(
-                    chat_id=message.chat.id,
-                    video=input_file,
-                    caption=caption,
-                    duration=result.get("duration"),
-                    width=result.get("width"),
-                    height=result.get("height"),
-                    supports_streaming=True,
-                    reply_to_message_id=message.message_id,
-                    reply_markup=reply_markup,
-                    parse_mode="HTML"
-                )
-            else:
-                await bot.send_photo(
-                    chat_id=message.chat.id,
-                    photo=input_file,
-                    caption=caption,
-                    reply_to_message_id=message.message_id,
-                    reply_markup=reply_markup,
-                    parse_mode="HTML"
-                )
+            if len(files) == 1:
+                file_path = files[0]
+                file_size = os.path.getsize(file_path)
 
-        # Agar karusel bo'lsa
-        elif len(files) > 1:
-            valid_media_files = [f for f in files if os.path.getsize(f) <= MAX_FILE_SIZE_BYTES]
+                if file_size > MAX_FILE_SIZE_BYTES:
+                    size_mb = file_size / (1024 * 1024)
+                    await status_msg.edit_text(
+                        f"⚠️ <b>Kechirasiz, video hajmi juda katta ({size_mb:.1f} MB)!</b>\n\n"
+                        f"Telegram botlari orqali faqat 50 MB gacha bo'lgan fayllarni yuborish mumkin.",
+                        parse_mode="HTML"
+                    )
+                    return
 
-            if not valid_media_files:
-                await status_msg.edit_text(
-                    "⚠️ Medialar hajmi Telegram cheklovidan (50 MB) oshib ketganligi sababli yuborib bo'lmadi.",
-                    parse_mode="HTML"
-                )
-                return
+                ext = os.path.splitext(file_path)[1].lower()
+                input_file = FSInputFile(file_path)
 
-            media_group = MediaGroupBuilder(caption=caption[:1024])
-            for fpath in valid_media_files[:10]:
-                ext = os.path.splitext(fpath)[1].lower()
-                inp = FSInputFile(fpath)
                 if ext in ['.mp4', '.mov', '.mkv', '.webm']:
-                    media_group.add_video(media=inp)
+                    await bot.send_video(
+                        chat_id=message.chat.id,
+                        video=input_file,
+                        caption=caption,
+                        duration=result.get("duration"),
+                        width=result.get("width"),
+                        height=result.get("height"),
+                        supports_streaming=True,
+                        reply_to_message_id=message.message_id,
+                        reply_markup=reply_markup,
+                        parse_mode="HTML"
+                    )
                 else:
-                    media_group.add_photo(media=inp)
+                    await bot.send_photo(
+                        chat_id=message.chat.id,
+                        photo=input_file,
+                        caption=caption,
+                        reply_to_message_id=message.message_id,
+                        reply_markup=reply_markup,
+                        parse_mode="HTML"
+                    )
 
-            try:
-                await bot.send_media_group(
-                    chat_id=message.chat.id,
-                    media=media_group.build(),
-                    reply_to_message_id=message.message_id
-                )
-            except Exception as e:
-                logger.warning(f"MediaGroup yuborishda xatolik, alohida yuborilmoqda: {e}")
-                for fpath in valid_media_files:
+            elif len(files) > 1:
+                valid_media_files = [f for f in files if os.path.getsize(f) <= MAX_FILE_SIZE_BYTES]
+
+                if not valid_media_files:
+                    await status_msg.edit_text(
+                        "⚠️ Medialar hajmi Telegram cheklovidan (50 MB) oshib ketganligi sababli yuborib bo'lmadi.",
+                        parse_mode="HTML"
+                    )
+                    return
+
+                media_group = MediaGroupBuilder(caption=caption[:1024])
+                for fpath in valid_media_files[:10]:
                     ext = os.path.splitext(fpath)[1].lower()
                     inp = FSInputFile(fpath)
                     if ext in ['.mp4', '.mov', '.mkv', '.webm']:
-                        await bot.send_video(chat_id=message.chat.id, video=inp)
+                        media_group.add_video(media=inp)
                     else:
-                        await bot.send_photo(chat_id=message.chat.id, photo=inp)
+                        media_group.add_photo(media=inp)
+
+                try:
+                    await bot.send_media_group(
+                        chat_id=message.chat.id,
+                        media=media_group.build(),
+                        reply_to_message_id=message.message_id
+                    )
+                except Exception as e:
+                    logger.warning(f"MediaGroup yuborishda xatolik: {e}")
+                    for fpath in valid_media_files:
+                        ext = os.path.splitext(fpath)[1].lower()
+                        inp = FSInputFile(fpath)
+                        if ext in ['.mp4', '.mov', '.mkv', '.webm']:
+                            await bot.send_video(chat_id=message.chat.id, video=inp)
+                        else:
+                            await bot.send_photo(chat_id=message.chat.id, photo=inp)
+
+            try:
+                await status_msg.delete()
+            except Exception:
+                pass
+
+        except Exception as e:
+            logger.exception("Instagram yuklashda xatolik yuz berdi:")
+            await status_msg.edit_text(
+                f"❌ Xatolik yuz berdi: {html.escape(str(e))}",
+                parse_mode="HTML"
+            )
+        finally:
+            if task_dir:
+                downloader.cleanup(task_dir)
+
+    # 2. Instagram havolasi bo'lmasa -> AI bilan suhbat
+    else:
+        async with ChatActionSender.typing(bot=bot, chat_id=message.chat.id):
+            ai_reply = await ask_ai(user_id=message.from_user.id, user_message=message.text)
 
         try:
-            await status_msg.delete()
+            await message.reply(ai_reply, parse_mode="Markdown")
         except Exception:
-            pass
-
-    except Exception as e:
-        logger.exception("Xatolik yuz berdi:")
-        await status_msg.edit_text(
-            f"❌ Xatolik yuz berdi: {html.escape(str(e))}",
-            parse_mode="HTML"
-        )
-    finally:
-        if task_dir:
-            downloader.cleanup(task_dir)
+            # Markdown teglari xato bo'lsa, oddiy matn sifatida xavfsiz yuborish
+            await message.reply(ai_reply, parse_mode=None)

@@ -11,6 +11,9 @@ load_dotenv(BASE_DIR / ".env")
 # Telegram Bot Token
 BOT_TOKEN = os.getenv("BOT_TOKEN", "").strip()
 
+# Gemini AI API kaliti
+GEMINI_API_KEY = os.getenv("GEMINI_API_KEY", "").strip()
+
 # Yuklab olinadigan vaqtinchalik fayllar katalogi
 DOWNLOADS_DIR = BASE_DIR / "downloads"
 DOWNLOADS_DIR.mkdir(parents=True, exist_ok=True)

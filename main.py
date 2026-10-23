@@ -33,6 +33,7 @@ async def set_bot_commands(bot: Bot):
     commands = [
         BotCommand(command="start", description="🚀 Botni ishga tushirish"),
         BotCommand(command="help", description="📖 Yordam va qo'llanma"),
+        BotCommand(command="clear", description="🧹 AI suhbat tarixini tozalash"),
     ]
     await bot.set_my_commands(commands)
 
