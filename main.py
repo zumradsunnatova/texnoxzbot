@@ -61,14 +61,20 @@ async def main():
     # Handler routerlarini ulash
     dp.include_router(router)
 
-    # Bot ishga tushayotganda menyu buyruqlarini o'rnatish
-    await set_bot_commands(bot)
-
-    # Eski kutilayotgan yangilanishlarni (pending updates) o'chirish
-    await bot.delete_webhook(drop_pending_updates=True)
-
-    bot_user = await bot.get_me()
-    logger.info(f"✅ Bot muvaffaqiyatli ishga tushdi: @{bot_user.username} ({bot_user.full_name})")
+    # Bot ishga tushayotganda menyu buyruqlarini o'rnatish va ulanishni tekshirish
+    for attempt in range(1, 6):
+        try:
+            await set_bot_commands(bot)
+            await bot.delete_webhook(drop_pending_updates=True)
+            bot_user = await bot.get_me()
+            logger.info(f"✅ Bot muvaffaqiyatli ishga tushdi: @{bot_user.username} ({bot_user.full_name})")
+            break
+        except Exception as e:
+            if attempt == 5:
+                logger.error(f"❌ Telegram serveriga ulanib bo'lmadi: {e}")
+                raise
+            logger.warning(f"Telegramga ulanishda vaqtinchalik xatolik ({e}). Qayta urinilmoqda ({attempt}/5)...")
+            await asyncio.sleep(3)
 
     try:
         # Polling rejimida yangilanishlarni qabul qilish
